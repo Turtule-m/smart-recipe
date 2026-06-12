@@ -7,9 +7,22 @@ import LandingPage from './pages/LandingPage.jsx';
 import PictureToRecipe from './pages/PictureToRecipe.jsx';
 import SearchPage from './pages/SearchPage.jsx';
 
-function AuthGate({ authMode, email, name, password, onAuthModeChange, onEmailChange, onNameChange, onPasswordChange, onSubmit }) {
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+
+function AuthGate({ 
+  authMode, 
+  email, 
+  name, 
+  password, 
+  onAuthModeChange, 
+  onEmailChange, 
+  onNameChange, 
+  onPasswordChange, 
+  onSubmit, 
+  notification 
+}) {
   return (
-    <div className="min-h-screen bg-stone-950/70 px-4 py-10 backdrop-blur-sm">
+    <div className="min-h-screen bg-stone-955/70 px-4 py-10 backdrop-blur-sm">
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-center justify-center">
         <div className="grid w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl lg:grid-cols-[0.9fr_1.1fr]">
           <div className="hidden bg-[url('https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=900&q=80')] bg-cover bg-center lg:block" />
@@ -26,6 +39,17 @@ function AuthGate({ authMode, email, name, password, onAuthModeChange, onEmailCh
                   : 'Start saving time, ingredients, and dinner decisions.'}
               </p>
             </div>
+
+            {/* Notification alert banner */}
+            {notification && (
+              <div className={`p-4 mb-5 text-sm font-bold rounded-lg border ${
+                notification.type === 'success' 
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                  : 'bg-red-50 text-red-800 border-red-200'
+              }`}>
+                {notification.message}
+              </div>
+            )}
 
             <form className="space-y-4" onSubmit={onSubmit}>
               {authMode === 'register' ? (
@@ -92,19 +116,69 @@ function AuthGate({ authMode, email, name, password, onAuthModeChange, onEmailCh
 
 function AppDashboard() {
   const [showAuthGate, setShowAuthGate] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return !!localStorage.getItem('token');
+  });
   const [authMode, setAuthMode] = useState('login');
   const [activeTab, setActiveTab] = useState('search');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [notification, setNotification] = useState(null);
 
-  const handleAuthSubmit = (event) => {
+  const handleAuthSubmit = async (event) => {
     event.preventDefault();
+    setNotification(null);
 
-    if (email && password) {
-      setIsLoggedIn(true);
-      setShowAuthGate(false);
+    try {
+      if (authMode === 'register') {
+        const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ name, email, password }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Registration failed');
+        }
+
+        // On successful registration, clear form fields and show notification
+        setName('');
+        setEmail('');
+        setPassword('');
+        setNotification({
+          type: 'success',
+          message: 'Onboarding email sent! Head over to your inbox to activate your profile before signing in.',
+        });
+      } else {
+        const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email, password }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Login failed');
+        }
+
+        // Store login token securely
+        localStorage.setItem('token', data.token);
+        setIsLoggedIn(true);
+        setShowAuthGate(false);
+      }
+    } catch (err) {
+      setNotification({
+        type: 'error',
+        message: err.message,
+      });
     }
   };
 
@@ -119,11 +193,15 @@ function AppDashboard() {
         email={email}
         name={name}
         password={password}
-        onAuthModeChange={setAuthMode}
+        onAuthModeChange={(mode) => {
+          setAuthMode(mode);
+          setNotification(null);
+        }}
         onEmailChange={setEmail}
         onNameChange={setName}
         onPasswordChange={setPassword}
         onSubmit={handleAuthSubmit}
+        notification={notification}
       />
     );
   }
@@ -172,11 +250,13 @@ function AppDashboard() {
             <button
               className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-500 transition-all hover:border-red-200 hover:text-red-500"
               onClick={() => {
+                localStorage.removeItem('token');
                 setIsLoggedIn(false);
                 setShowAuthGate(false);
                 setEmail('');
                 setPassword('');
                 setName('');
+                setNotification(null);
               }}
               type="button"
             >
